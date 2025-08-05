@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Image Pixelator</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+      }
+      canvas {
+        border: 1px solid #ccc;
+        margin: 10px;
+      }
+      #output {
+        display: none;
+      }
+      #downloadBtn {
+        display: none;
+      }
+      #original,
+      #output {
+        width: 400px;
+        height: auto;
+      }
+      #output {
+        image-rendering: pixelated;
+        image-rendering: -moz-crisp-edges;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Image Pixelator</h1>
+    <p>
+      Upload an image, specify the output pixel dimensions and mode, then click
+      Pixelate.
+    </p>
+
+    <label for="imageUpload">Upload Image:</label>
+    <input type="file" id="imageUpload" accept="image/*" /><br /><br />
+
+    <label for="outWidth">Horizontal Pixels:</label>
+    <input type="number" id="outWidth" min="1" value="32" /><br /><br />
+
+    <label for="outHeight">Vertical Pixels:</label>
+    <input type="number" id="outHeight" min="1" value="32" /><br /><br />
+
+    <label for="preserveAspect">Preserve Aspect Ratio:</label>
+    <input type="checkbox" id="preserveAspect" checked /><br /><br />
+
+    <label for="mode">Color Mode:</label>
+    <select id="mode">
+      <option value="average">Average Color</option>
+      <option value="center">Center Pixel</option></select
+    ><br /><br />
+
+    <button id="pixelateBtn">Pixelate Image</button><br /><br />
+
+    <h2>Original Image:</h2>
+    <img id="original" alt="Original Image" />
+
+    <h2>Pixelated Image:</h2>
+    <canvas id="output"></canvas><br />
+    <button id="downloadBtn">Download Pixelated Image</button>
+
+    <script>
+      const imageUpload = document.getElementById("imageUpload");
+      const outWidthInput = document.getElementById("outWidth");
+      const outHeightInput = document.getElementById("outHeight");
+      const preserveAspect = document.getElementById("preserveAspect");
+      const modeSelect = document.getElementById("mode");
+      const pixelateBtn = document.getElementById("pixelateBtn");
+      const originalImg = document.getElementById("original");
+      const outputCanvas = document.getElementById("output");
+      const downloadBtn = document.getElementById("downloadBtn");
+
+      let img = new Image();
+      let aspectRatio = 1;
+
+      function updateHeight() {
+        let w = parseInt(outWidthInput.value) || 32;
+        outHeightInput.value = Math.round(w * aspectRatio);
+      }
+
+      function updateWidth() {
+        let h = parseInt(outHeightInput.value) || 32;
+        outWidthInput.value = Math.round(h / aspectRatio);
+      }
+
+      imageUpload.addEventListener("change", (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            img.src = event.target.result;
+            originalImg.src = event.target.result;
+            img.onload = () => {
+              aspectRatio = img.height / img.width;
+              if (preserveAspect.checked) {
+                updateHeight();
+              }
+            };
+          };
+          reader.readAsDataURL(file);
+        }
+      });
+
+      outWidthInput.addEventListener("input", () => {
+        if (preserveAspect.checked) {
+          updateHeight();
+        }
+      });
+
+      outHeightInput.addEventListener("input", () => {
+        if (preserveAspect.checked) {
+          updateWidth();
+        }
+      });
+
+      preserveAspect.addEventListener("change", () => {
+        if (preserveAspect.checked) {
+          updateHeight();
+        }
+      });
+
+      pixelateBtn.addEventListener("click", () => {
+        let outWidth = parseInt(outWidthInput.value);
+        let outHeight = parseInt(outHeightInput.value);
+        const mode = modeSelect.value;
+
+        if (isNaN(outWidth) || outWidth <= 0) outWidth = 32;
+        if (isNaN(outHeight) || outHeight <= 0) outHeight = 32;
+
+        if (!img.src) {
+          alert("Please upload an image first.");
+          return;
+        }
+
+        const tempCanvas = document.createElement("canvas");
+        const tempCtx = tempCanvas.getContext("2d");
+        tempCanvas.width = img.width;
+        tempCanvas.height = img.height;
+        tempCtx.drawImage(img, 0, 0);
+
+        const imageData = tempCtx.getImageData(
+          0,
+          0,
+          img.width,
+          img.height,
+        ).data;
+
+        outputCanvas.width = outWidth;
+        outputCanvas.height = outHeight;
+        const ctx = outputCanvas.getContext("2d");
+
+        const blockWidth = Math.ceil(img.width / outWidth);
+        const blockHeight = Math.ceil(img.height / outHeight);
+
+        for (let y = 0; y < outHeight; y++) {
+          for (let x = 0; x < outWidth; x++) {
+            const startX = x * blockWidth;
+            const startY = y * blockHeight;
+            const endX = Math.min(startX + blockWidth, img.width);
+            const endY = Math.min(startY + blockHeight, img.height);
+
+            if (endX <= startX || endY <= startY) continue;
+
+            let r, g, b, a;
+            if (mode === "average") {
+              let sumR = 0,
+                sumG = 0,
+                sumB = 0,
+                sumA = 0,
+                count = 0;
+
+              for (let py = startY; py < endY; py++) {
+                for (let px = startX; px < endX; px++) {
+                  const index = (py * img.width + px) * 4;
+                  sumR += imageData[index];
+                  sumG += imageData[index + 1];
+                  sumB += imageData[index + 2];
+                  sumA += imageData[index + 3];
+                  count++;
+                }
+              }
+
+              r = Math.round(sumR / count);
+              g = Math.round(sumG / count);
+              b = Math.round(sumB / count);
+              a = Math.round(sumA / count);
+            } else {
+              // center
+              const middleX = startX + Math.floor((endX - startX) / 2);
+              const middleY = startY + Math.floor((endY - startY) / 2);
+              const index = (middleY * img.width + middleX) * 4;
+              r = imageData[index];
+              g = imageData[index + 1];
+              b = imageData[index + 2];
+              a = imageData[index + 3];
+            }
+
+            ctx.fillStyle = `rgba(${r},${g},${b},${a / 255})`;
+            ctx.fillRect(x, y, 1, 1);
+          }
+        }
+
+        outputCanvas.style.display = "block";
+        downloadBtn.style.display = "block";
+      });
+
+      downloadBtn.addEventListener("click", () => {
+        const link = document.createElement("a");
+        link.href = outputCanvas.toDataURL("image/png");
+        link.download = "pixelated.png";
+        link.click();
+      });
+    </script>
+  </body>
+</html>
